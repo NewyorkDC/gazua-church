@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>가즈아 교회 | 3D 온라인 교회 · 실시간 시세 전광판</title>
+<meta name="description" content="트럼프 동상을 모신 패러디 3D 온라인 교회. 네 벽면의 실시간 시세 전광판을 보며 함께 기도하고, 오물 던지고, 동상을 닦습니다." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⛪</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- ─────────────────────────── 입장 화면 ─────────────────────────── -->
+<div id="gate" class="gate">
+  <div class="gate-card">
+    <div class="gate-logo">⛪ <b>가즈아 교회</b></div>
+    <p class="gate-sub">트럼프 동상을 모신 패러디 3D 온라인 교회<br />네 벽면 전광판에 실시간(모의) 시세가 흐릅니다</p>
+
+    <label class="field">
+      <span>닉네임</span>
+      <input id="nickInput" maxlength="12" placeholder="비우면 자동 생성" autocomplete="off" />
+    </label>
+
+    <div class="field">
+      <span>몸통 고르기</span>
+      <div id="skinPick" class="skin-pick">
+        <button type="button" class="sb on" data-skin="believer"><i>🧎</i>일반 신자</button>
+        <button type="button" class="sb" data-skin="ant"><i>🐜</i>개미</button>
+        <button type="button" class="sb" data-skin="trump"><i>🇺🇸</i>트럼프</button>
+        <button type="button" class="sb" data-skin="musk"><i>🚀</i>머스크</button>
+      </div>
+    </div>
+
+    <label class="field" id="roomField">
+      <span>예배실</span>
+      <div id="roomPick" class="room-pick"></div>
+    </label>
+
+    <button id="enterBtn" class="btn-primary">입장하기</button>
+    <p class="gate-foot">모든 시세와 내용은 패러디·모의 데이터이며 투자 권유가 아닙니다.</p>
+  </div>
+</div>
+
+<!-- ─────────────────────────── 상단 시세 띠 ─────────────────────────── -->
+<div id="band" class="band">
+  <div id="bandTrack" class="band-track"></div>
+</div>
+
+<!-- ─────────────────────────── 헤더 ─────────────────────────── -->
+<header id="hud-top" class="hud-top hidden">
+  <button id="leaveBtn" class="pill icon" title="나가기">↪</button>
+  <div class="pill brand">⛪ <b>가즈아 교회</b></div>
+  <div class="pill room">
+    <span id="roomLabel">예배실 1</span>
+    <select id="roomSelect" aria-label="예배실 선택"></select>
+  </div>
+  <div class="pill count"><span id="countLabel">0</span><i>/100</i></div>
+  <div class="pill bgm">
+    <span class="bgm-ico">🎧</span>
+    <div id="bgmPick" class="bgm-pick"></div>
+    <span id="bgmName">끔</span>
+  </div>
+</header>
+
+<!-- ─────────────────────────── 좌측 패널 ─────────────────────────── -->
+<div id="hud-left" class="hud-left hidden">
+  <button id="btnBoard" class="pill">🏅 헌신 순위</button>
+  <button id="btnVote" class="pill">📊 종목 추천</button>
+  <button id="btnConfess" class="pill">🕯 고해소</button>
+  <div class="pill dirt">
+    <span>동상 오염도</span>
+    <div class="dirt-bar"><i id="dirtFill"></i></div>
+    <b id="dirtPct">0%</b>
+  </div>
+</div>
+
+<!-- ─────────────────────────── 순위 모달 ─────────────────────────── -->
+<div id="boardPanel" class="panel hidden">
+  <div class="panel-h">🏅 헌신 순위 <button class="x" data-close>✕</button></div>
+  <div class="panel-b">
+    <p class="muted">
+      <b>헌신 점수</b> = 동상 청소×2 + 오물 명중×1 + 머리 명중×3 + 기도×2 + 머문 시간(분).<br />
+      점수가 쌓이면 직위가 <b id="myRank">구도자</b> 부터 10단계로 올라가고, 머리 위 이름표에 함께 뜹니다.
+    </p>
+    <div class="my-score" id="myScore">헌신 0점</div>
+    <h4>🎖 직위 10단계</h4><ol id="ladderList" class="rank-list ladder"></ol>
+    <h4>🧽 동상 청소</h4><ol id="boardClean" class="rank-list"></ol>
+    <h4>💩 오물 명중</h4><ol id="boardHit" class="rank-list"></ol>
+    <h4>🎯 머리 명중</h4><ol id="boardHead" class="rank-list"></ol>
+  </div>
+</div>
+
+<!-- ─────────────────────────── 추천 모달 ─────────────────────────── -->
+<div id="votePanel" class="panel hidden">
+  <div class="panel-h">📊 전광판 종목 추천 <button class="x" data-close>✕</button></div>
+  <div class="panel-b">
+    <p class="muted">추천 많은 상위 4종목이 <b id="rotateIn">05:00</b> 뒤 동·서쪽 전광판 4칸과 피라미드 기도단에 올라갑니다. 1인 1표.</p>
+    <div class="vote-input">
+      <input id="voteInput" maxlength="12" placeholder="종목코드/티커 (예: TSLA, 005930)" autocomplete="off" />
+      <button id="voteBtn">추천</button>
+    </div>
+    <div id="voteChips" class="chips"></div>
+    <h4>🖥 지금 전광판</h4>
+    <ol id="nowList" class="rank-list now-list"></ol>
+    <h4>현재 집계</h4>
+    <ol id="tallyList" class="rank-list"></ol>
+  </div>
+</div>
+
+<!-- ─────────────────────────── 고해소 모달 ─────────────────────────── -->
+<div id="confessPanel" class="panel hidden">
+  <div class="panel-h">🕯 고해소 <button class="x" data-close>✕</button></div>
+  <div class="panel-b">
+    <p class="muted">본인의 잘못을 적으면 예배당 서쪽 <b>기록판</b>에 말풍선으로 붙습니다. 최근 <b>20개</b>만 남고 오래된 것부터 지워집니다.</p>
+    <div class="vote-input">
+      <input id="confessInput" maxlength="50" placeholder="예: 고점에 풀매수했습니다 (50자)" autocomplete="off" />
+      <button id="confessBtn">고백</button>
+    </div>
+    <h4>기록판</h4>
+    <ol id="confessList" class="rank-list conf-list"></ol>
+  </div>
+</div>
+
+<!-- ─────────────────────────── 채팅 로그 ─────────────────────────── -->
+<div id="chatLog" class="chat-log hidden"></div>
+
+<!-- ─────────────────────────── 하단 바 ─────────────────────────── -->
+<div id="hud-bottom" class="hud-bottom hidden">
+  <div class="wish-row">
+    <button class="wish bull" data-act="bull">
+      <span>🔺</span><em>상승기원</em><b id="bullN">0</b>
+    </button>
+    <div class="wish-mid" id="wishMid">기원</div>
+    <button class="wish bear" data-act="bear">
+      <span>🔻</span><em>하락기원</em><b id="bearN">0</b>
+    </button>
+  </div>
+
+  <div id="actions" class="actions">
+    <button class="act" data-act="throw">
+      <span>💩</span>오물 던지기<i>R · 꾹 누르면 위로</i>
+      <div class="charge"><i id="chargeFill"></i></div>
+    </button>
+    <button class="act" data-act="clean"><span>🧽</span>동상 청소<i>C · 1%씩</i></button>
+    <button class="act" data-act="pray"><span>🙏</span>기도<i>E</i></button>
+    <button class="act" data-act="jump"><span>🦘</span>점프<i>Space</i></button>
+  </div>
+
+  <form id="chatForm" class="chat-form">
+    <input id="chatInput" maxlength="40" placeholder="한마디 하기 (40자)" autocomplete="off" />
+    <button type="submit">➤</button>
+  </form>
+</div>
+
+<!-- ─────────────────────────── 3D + 라벨 ─────────────────────────── -->
+<div id="labels" class="labels"></div>
+<canvas id="scene"></canvas>
+
+<div id="flash" class="flash"></div>
+<div id="banner" class="banner"><b id="bannerTitle"></b><span id="bannerSub"></span></div>
+<div id="toast" class="toast"></div>
+<div id="loading" class="loading">예배당을 짓는 중…</div>
+
+<script>
+  // 같은 서버에서 다 돌리면 비워 두면 됩니다.
+  // 정적 파일만 Vercel 에 올리고 웹소켓 서버를 따로 둘 때만 그 호스트를 적으세요.
+  //   예) window.CHURCH_SERVER = 'gazua-church.onrender.com';
+  window.CHURCH_SERVER = '';
+</script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

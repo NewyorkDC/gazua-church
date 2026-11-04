@@ -1,0 +1,17 @@
+{
+  "name": "gazua-church",
+  "version": "0.1.0",
+  "description": "가즈아 교회 - 3D 온라인 교회 (트럼프 동상 + 실시간 시세 전광판)",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
