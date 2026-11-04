@@ -101,7 +101,7 @@ $('#enterBtn').onclick = () => {
   app.room = pickedRoom;
   app.nick = $('#nickInput').value.trim();
   $('#gate').classList.add('hidden');
-  for (const el of document.querySelectorAll('.hud-top,.hud-left,.hud-bottom,.chat-log')) el.classList.remove('hidden');
+  for (const el of document.querySelectorAll('.hud-top,.hud-left,.hud-bottom,.chat-log,.hud-right')) el.classList.remove('hidden');
   net.connect({ t: 'join', room: app.room, nick: app.nick || undefined, skin: app.skin });
 };
 
@@ -109,7 +109,7 @@ $('#leaveBtn').onclick = () => {
   net.close();
   resetWorld();
   app.joined = false;
-  for (const el of document.querySelectorAll('.hud-top,.hud-left,.hud-bottom,.chat-log')) el.classList.add('hidden');
+  for (const el of document.querySelectorAll('.hud-top,.hud-left,.hud-bottom,.chat-log,.hud-right')) el.classList.add('hidden');
   closePanels();
   $('#gate').classList.remove('hidden');
   loadRooms();
@@ -198,7 +198,7 @@ net.on('full', (m) => {
   toast(`예배실 ${m.room}이(가) 가득 찼습니다`);
   net.close();
   if (m.rooms) { renderRoomPick(m.rooms); fillRoomSelect(m.rooms); }
-  for (const el of document.querySelectorAll('.hud-top,.hud-left,.hud-bottom,.chat-log')) el.classList.add('hidden');
+  for (const el of document.querySelectorAll('.hud-top,.hud-left,.hud-bottom,.chat-log,.hud-right')) el.classList.add('hidden');
   $('#gate').classList.remove('hidden');
 });
 
@@ -820,6 +820,100 @@ setInterval(() => {
   }
 }, 500);
 
+/* ══════════════════════════════════════════ 후원 · 보상형 광고 */
+
+const ADS = window.CHURCH_ADS || {};
+
+(function buildBanner() {
+  const cfg = ADS.banner || {};
+  const box = $('#adBox');
+  if (!cfg.enabled) { box.remove(); return; }
+
+  const link = $('#adLink');
+  // 제휴 링크는 http(s) 만 허용 (javascript: 같은 건 막는다)
+  if (/^https?:\/\//i.test(cfg.href || '')) link.setAttribute('href', cfg.href);
+  else { link.removeAttribute('href'); link.classList.add('empty'); }
+
+  if (/^https?:\/\//i.test(cfg.img || '')) {
+    const img = $('#adImg');
+    img.src = cfg.img;
+    img.hidden = false;
+  }
+  $('#adTitle').textContent = cfg.title || '';
+  $('#adText').textContent = cfg.text || '';
+  $('#adDisc').textContent = cfg.disclosure || '';
+  $('#adClose').onclick = () => box.remove();
+})();
+
+let rewardNextAt = 0;
+
+function paintReward() {
+  const b = $('#btnReward');
+  const left = rewardNextAt - Date.now();
+  if (left > 0) {
+    b.disabled = true;
+    const m = Math.floor(left / 60000);
+    const s2 = Math.ceil((left % 60000) / 1000);
+    $('#rwSub').textContent = `${m}분 ${s2}초 뒤 다시`;
+  } else {
+    b.disabled = false;
+    $('#rwSub').textContent = '지금 받기';
+  }
+}
+setInterval(paintReward, 1000);
+
+if (!(ADS.rewarded || {}).enabled) $('#btnReward').remove();
+
+$('#btnReward').onclick = async () => {
+  if (!app.joined) return toast('먼저 입장해 주세요');
+  if (Date.now() < rewardNextAt) return;
+  const ok = await showAd();
+  if (ok) net.send({ t: 'reward' });
+};
+
+/** 광고 재생. provider 가 연결돼 있으면 그쪽에 맡기고, 없으면 자리만 지킨다 */
+function showAd() {
+  const cfg = ADS.rewarded || {};
+  if (typeof cfg.provider === 'function') {
+    return Promise.resolve(cfg.provider()).catch(() => false);
+  }
+  return new Promise((resolve) => {
+    const modal = $('#adModal');
+    const total = Math.max(3, cfg.seconds || 15);
+    let left = total;
+    modal.classList.remove('hidden');
+    $('#adCount').textContent = left;
+    $('#adProgress').style.width = '0%';
+
+    const done = (ok) => {
+      clearInterval(iv);
+      modal.classList.add('hidden');
+      $('#adCancel').onclick = null;
+      resolve(ok);
+    };
+    $('#adCancel').onclick = () => done(false);
+
+    const iv = setInterval(() => {
+      left -= 0.1;
+      $('#adCount').textContent = Math.max(0, Math.ceil(left));
+      $('#adProgress').style.width = ((total - left) / total * 100).toFixed(1) + '%';
+      if (left <= 0) done(true);
+    }, 100);
+  });
+}
+
+net.on('reward', (m) => {
+  rewardNextAt = m.next || 0;
+  paintReward();
+  if (m.ok) {
+    toast(`직위 점수 +${m.points} 적립 🎁`);
+    logSys(`🎁 광고 보상으로 직위 점수 +${m.points}`);
+    app.meAv?.setRank(m.rank);
+  } else {
+    toast('아직 다시 받을 수 없습니다');
+  }
+});
+
 let toastTimer = 0;
 function toast(msg) {
   const el = $('#toast');
@@ -958,5 +1052,7 @@ requestAnimationFrame(loop);
 world.camPos.set(0, 6, 14);
 world.updateCamera(new THREE.Vector3(0, 1.4, 0), 1);
 
-// 콘솔에서 상태를 들여다볼 수 있게
-window.__church = { app, world, net };
+// 디버그 핸들은 로컬에서만 — 배포본에서 조작 거리를 줄인다
+if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+  window.__church = { app, world, net };
+}

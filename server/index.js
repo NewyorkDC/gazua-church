@@ -29,6 +29,11 @@ const BODY = { y: 3.62, r: 1.05 };
 const HALF = 14.4;          // 바닥 정사각 반폭
 const STATUE_KEEP = 2.35;   // 동상 진입 금지 반경
 const MAX_CONFESS = 20;
+// 학교·회사처럼 여러 사람이 같은 공인 IP 를 쓰는 경우가 있어 너무 조이면 안 된다
+const MAX_CONN_PER_IP = Number(process.env.MAX_CONN_PER_IP || 8);
+const MAX_MSG_PER_SEC = Number(process.env.MAX_MSG_PER_SEC || 45);  // 패킷 폭주 방지
+const REWARD_POINTS = Number(process.env.REWARD_POINTS || 30);       // 보상형 광고 보상
+const REWARD_COOLDOWN = Number(process.env.REWARD_COOLDOWN || 10 * 60 * 1000);
 const COLLAPSE_MS = 60000;   // 똥더미로 1분 있다가 재건
 
 /** 기도 버튼을 누르면 랜덤으로 외치는 멘트 */
@@ -122,11 +127,12 @@ class Player {
     this.lastConfess = 0;
     this.moveBudget = 0;
     this.sentRank = -1;
+    this.bonus = 0;
   }
 
   get score() {
     const mins = (Date.now() - this.joinedAt) / 60000;
-    return Math.floor(this.cleans * 2 + this.hits + this.heads * 3 + this.prays * 2 + mins);
+    return Math.floor(this.cleans * 2 + this.hits + this.heads * 3 + this.prays * 2 + mins + this.bonus);
   }
 
   get rank() { return rankFor(this.score); }
@@ -282,7 +288,10 @@ const server = http.createServer((req, res) => {
   }
 
   const file = path.join(PUBLIC_DIR, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
-  if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403).end('forbidden'); return; }
+  if (file !== PUBLIC_DIR && !file.startsWith(PUBLIC_DIR + path.sep)) {
+    res.writeHead(403).end('forbidden');
+    return;
+  }
 
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('not found'); return; }
@@ -296,16 +305,51 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server, maxPayload: 4096 });
 let nextId = 1;
 
-wss.on('connection', (ws) => {
+/** 같은 IP 에서 몇 개나 붙어 있는지 */
+const ipConns = new Map();
+/** 보상형 광고 쿨다운 (IP 기준 — 재접속으로 초기화되지 않게) */
+const rewardAt = new Map();
+
+function clientIp(req) {
+  const xf = req.headers['x-forwarded-for'];
+  const ip = xf ? String(xf).split(',')[0].trim() : req.socket.remoteAddress;
+  return ip || 'unknown';
+}
+
+wss.on('connection', (ws, req) => {
+  const ip = clientIp(req);
+  const open = (ipConns.get(ip) || 0) + 1;
+  if (open > MAX_CONN_PER_IP) {
+    try { ws.send(JSON.stringify({ t: 'err', reason: '같은 곳에서 너무 많이 접속했습니다' })); } catch {}
+    ws.close();
+    return;
+  }
+  ipConns.set(ip, open);
+
   let room = null;
   let me = null;
+  let msgCount = 0;
   ws.isAlive = true;
+  ws.msgReset = setInterval(() => { msgCount = 0; }, 1000);
   ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (raw) => {
+    // 초당 메시지 상한 — 넘으면 끊는다
+    if (++msgCount > MAX_MSG_PER_SEC) { ws.close(); return; }
+
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     if (!m || typeof m.t !== 'string') return;
+
+    try {
+      handle(m);
+    } catch (e) {
+      // 메시지 하나가 잘못됐다고 서버 전체가 죽으면 안 된다
+      console.error('[msg]', m.t, e && e.message);
+    }
+  });
+
+  function handle(m) {
 
     if (m.t === 'join') {
       if (me) return;
@@ -442,6 +486,7 @@ wss.on('connection', (ws) => {
         const sym = String(m.s || '').toUpperCase().replace(/[^A-Z0-9가-힣.]/g, '').slice(0, 12);
         if (!sym) return;
         const inst = market.ensure(sym, sanitizeNick(m.name) || undefined);
+        if (!inst) { ws.send(JSON.stringify({ t: 'err', reason: '지금은 새 종목을 더 받을 수 없습니다' })); return; }
         for (const set of votes.values()) set.delete(me.id);
         if (!votes.has(inst.sym)) votes.set(inst.sym, new Set());
         votes.get(inst.sym).add(me.id);
@@ -450,13 +495,35 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      case 'reward': {
+        // 광고를 끝까지 봤다고 클라이언트가 알려 오는 지점.
+        // 실제 광고 네트워크를 붙이면 여기서 네트워크의 서버 검증(SSV) 콜백을
+        // 확인하도록 바꿔야 한다. 지금은 쿨다운으로만 막는다.
+        const prev = rewardAt.get(ip) || 0;
+        if (now - prev < REWARD_COOLDOWN) {
+          ws.send(JSON.stringify({ t: 'reward', ok: false, next: prev + REWARD_COOLDOWN }));
+          return;
+        }
+        rewardAt.set(ip, now);
+        me.bonus += REWARD_POINTS;
+        ws.send(JSON.stringify({
+          t: 'reward', ok: true, points: REWARD_POINTS,
+          score: me.score, rank: me.rank, next: now + REWARD_COOLDOWN,
+        }));
+        break;
+      }
+
       case 'board':
         ws.send(JSON.stringify({ t: 'board', board: room.board(), n: room.size }));
         break;
     }
-  });
+  }
 
   ws.on('close', () => {
+    clearInterval(ws.msgReset);
+    const left = (ipConns.get(ip) || 1) - 1;
+    if (left <= 0) ipConns.delete(ip); else ipConns.set(ip, left);
+
     if (me && room) {
       room.players.delete(me.id);
       room.moved.delete(me.id);
@@ -527,6 +594,9 @@ setInterval(() => {
 
 market.setActiveGetter(activeSymbols);
 market.start();
+
+process.on('uncaughtException', (e) => console.error('[uncaught]', e));
+process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
 server.listen(PORT, () => {
   console.log(`\n  ⛪  가즈아 교회  http://localhost:${PORT}`);

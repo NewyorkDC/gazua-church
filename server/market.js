@@ -14,6 +14,7 @@ const CANDLE_MS = 60 * 1000;
 const KEEP = 60;
 const POLL_MS = Number(process.env.POLL_MS || 30000);
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' };
+const MAX_USER_SYMBOLS = Number(process.env.MAX_USER_SYMBOLS || 60);
 
 /** 고정 2개 벽 */
 const FIXED = [
@@ -210,6 +211,7 @@ class Market {
     this.bands = BANDS.map(b => new Instrument(b));
     this.bandByKey = new Map(this.bands.map(b => [b.sym, b]));
     this.simulated = process.env.LIVE === '0';
+    this.userAdded = 0;
     this.activeGetter = () => [];
   }
 
@@ -219,6 +221,9 @@ class Market {
   ensure(sym, name) {
     const key = String(sym).toUpperCase().slice(0, 12);
     if (this.inst.has(key)) return this.inst.get(key);
+    // 봇이 임의 심볼을 쏟아부어 메모리와 외부 요청을 늘리는 걸 막는다
+    if (this.userAdded >= MAX_USER_SYMBOLS) return null;
+    this.userAdded++;
     const krx = /^\d{6}$/.test(key);
     const inst = new Instrument({
       sym: key,

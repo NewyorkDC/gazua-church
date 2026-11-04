@@ -132,6 +132,37 @@
   </div>
 </div>
 
+<!-- ─────────────────────────── 오른쪽 레일 (후원) ─────────────────────────── -->
+<div id="hud-right" class="hud-right hidden">
+  <button id="btnReward" class="reward-btn">
+    <span class="rw-ico">🎁</span>
+    <span class="rw-txt">광고 보고 <b>직위 점수 +30</b></span>
+    <small id="rwSub">지금 받기</small>
+  </button>
+
+  <aside id="adBox" class="adbox">
+    <div class="adbox-h"><span>후원</span><button class="x" id="adClose" title="닫기">✕</button></div>
+    <a id="adLink" class="adbox-a" target="_blank" rel="nofollow sponsored noopener">
+      <img id="adImg" alt="" hidden />
+      <strong id="adTitle"></strong>
+      <span id="adText"></span>
+    </a>
+    <p class="adbox-f" id="adDisc"></p>
+  </aside>
+</div>
+
+<!-- ─────────────────────────── 보상형 광고 ─────────────────────────── -->
+<div id="adModal" class="ad-modal hidden">
+  <div class="ad-card">
+    <div class="ad-slot" id="adSlot">광고 자리<small>ads.js 의 provider 를 연결하면 실제 광고가 재생됩니다</small></div>
+    <div class="ad-bar"><i id="adProgress"></i></div>
+    <div class="ad-foot">
+      <span><b id="adCount">15</b>초 후 <b>+30점</b>이 지급됩니다</span>
+      <button id="adCancel">그만두기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─────────────────────────── 채팅 로그 ─────────────────────────── -->
 <div id="chatLog" class="chat-log hidden"></div>
 
@@ -178,6 +209,7 @@
   //   예) window.CHURCH_SERVER = 'gazua-church.onrender.com';
   window.CHURCH_SERVER = '';
 </script>
+<script src="/ads.js"></script>
 <script type="module" src="/js/main.js"></script>
 </body>
 </html>
